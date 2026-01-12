@@ -1,21 +1,30 @@
+-- ==========================================================
+-- BRAINROT SUPREME HUB | BY WERBERT_OFC (v5.0)
+-- FUNÇÕES: Auto-Farm, Anti-Tsunami, VIP Unlock e Celestial TP
+-- ==========================================================
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 
--- === CONFIGURAÇÕES ===
+-- === CONFIGURAÇÕES GERAIS ===
 local totalSlots = 30
 local delayUpgrade = 4
 local delayColeta = 5
 local ligado = false
 
+-- Remotes do Jogo
 local collectEvent = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("CollectMoney")
 local upgradeFunction = ReplicatedStorage:WaitForChild("RemoteFunctions"):WaitForChild("UpgradeBrainrot")
 
--- === INTERFACE MOBILE ===
+-- === INTERFACE MOBILE (BOTÃO ON/OFF) ===
 local player = Players.LocalPlayer
 local pGui = player:WaitForChild("PlayerGui")
 
-if pGui:FindFirstChild("BrainrotFinalGui") then pGui.BrainrotFinalGui:Destroy() end
+-- Remove GUI antiga se existir
+if pGui:FindFirstChild("BrainrotFinalGui") then 
+    pGui.BrainrotFinalGui:Destroy() 
+end
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "BrainrotFinalGui"
@@ -38,11 +47,13 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 45)
 UICorner.Parent = MainButton
 
--- === FUNÇÃO DE LIMPEZA ===
+-- === FUNÇÃO DE LIMPEZA DO MAPA ===
 local function limparMapa()
+    -- Deleta Tsunamis ativos
     local tsunami = workspace:FindFirstChild("ActiveTsunamis")
     if tsunami then tsunami:Destroy() end
 
+    -- Deleta VIPWalls (para usar a proteção VIP)
     local vipNoWorkspace = workspace:FindFirstChild("VIPWalls")
     if vipNoWorkspace then vipNoWorkspace:Destroy() end
 
@@ -53,55 +64,49 @@ local function limparMapa()
     end
 end
 
--- === LÓGICA DE TELEPORTE (FUNÇÃO CENTRAL) ===
-local function teleportarParaBrainrot(brainrot)
+-- === LÓGICA DE TELEPORTE (CELESTIAL) ===
+-- Resolve o problema de StreamingEnabled (não renderizado)
+local function teleportarParaCelestial(brainrot)
     if not ligado then return end
     
-    task.wait(0.1) -- Delay mínimo para carregar física
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     
     if hrp and brainrot then
-        local destinoPart = nil
+        -- Força o servidor a carregar a área onde o brainrot está
+        local alvoPos = brainrot:GetPivot().Position
+        player:RequestStreamAroundAsync(alvoPos) 
         
-        -- Tenta achar a melhor parte para teleportar
-        if brainrot:IsA("Model") then
-            destinoPart = brainrot.PrimaryPart
-            if not destinoPart then
-                -- Se não tiver PrimaryPart, pega a primeira peça que achar
-                destinoPart = brainrot:FindFirstChildWhichIsA("BasePart", true)
-            end
-        elseif brainrot:IsA("BasePart") then
-            destinoPart = brainrot
-        end
-
-        if destinoPart then
-            hrp.CFrame = destinoPart.CFrame + Vector3.new(0, 4, 0) -- 4 studs acima
-            print("⚡ SUCESSO: Teleportado para " .. brainrot.Name)
-        else
-            warn("⚠️ ERRO: O Brainrot " .. brainrot.Name .. " não tem peças físicas!")
-        end
+        task.wait(0.2) -- Tempo para física carregar
+        
+        -- Teleporta 5 blocos acima do alvo para evitar bugs
+        hrp.CFrame = CFrame.new(alvoPos + Vector3.new(0, 5, 0))
+        print("⚡ SUCESSO: Personagem movido para " .. brainrot.Name)
     end
 end
 
--- === MONITORAMENTO E VARREDURA ===
-local folderActive = workspace:WaitForChild("ActiveBrainrots", 10)
-local folderCelestial = folderActive and folderActive:WaitForChild("Celestial", 10)
+-- === MONITORAMENTO DA PASTA CELESTIAL ===
+task.spawn(function()
+    while true do
+        if ligado then
+            local activeFolder = workspace:FindFirstChild("ActiveBrainrots")
+            if activeFolder then
+                local celestialFolder = activeFolder:FindFirstChild("Celestial")
+                if celestialFolder then
+                    local itens = celestialFolder:GetChildren()
+                    if #itens > 0 then
+                        -- Se houver qualquer Celestial na pasta, teleporta para o primeiro
+                        teleportarParaCelestial(itens[1])
+                    end
+                end
+            end
+        end
+        task.wait(1.5) -- Verifica a cada 1.5 segundos
+    end
+end)
 
-if folderCelestial then
-    -- 1. Detecta novos que nascem
-    folderCelestial.ChildAdded:Connect(function(child)
-        teleportarParaBrainrot(child)
-    end)
-    print("✅ Monitor de Celestiais Ativado na pasta correta!")
-else
-    warn("❌ ERRO CRÍTICO: Pasta Celestial não encontrada no Workspace!")
-end
-
--- === SISTEMA DE ARRASTAR (TOUCH) ===
-local dragging = false
-local dragStart, startPos
-
+-- === SISTEMA DE ARRASTAR O BOTÃO (MOBILE) ===
+local dragging, dragStart, startPos
 MainButton.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
@@ -117,43 +122,36 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
-MainButton.InputEnded:Connect(function(input)
-    dragging = false
-end)
+MainButton.InputEnded:Connect(function() dragging = false end)
 
--- === ATIVAR/DESATIVAR ===
+-- === LÓGICA DO BOTÃO ON/OFF ===
 MainButton.Activated:Connect(function()
     ligado = not ligado
     if ligado then
         MainButton.Text = "ON"
         MainButton.BackgroundColor3 = Color3.fromRGB(50, 255, 50)
         limparMapa()
-        
-        -- NOVA VARREDURA: Checa se JÁ tem algo lá quando liga
-        if folderCelestial then
-            for _, item in pairs(folderCelestial:GetChildren()) do
-                teleportarParaBrainrot(item)
-            end
-        end
     else
         MainButton.Text = "OFF"
         MainButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
     end
 end)
 
--- === LOOPS ===
+-- === LOOPS DE FARM AUTOMÁTICO ===
+-- Loop de Coleta (Dinheiro)
 task.spawn(function()
     while true do
         if ligado then
             for i = 1, totalSlots do
                 collectEvent:FireServer("Slot" .. i)
             end
-            limparMapa() 
+            limparMapa() -- Garante que o tsunami suma sempre
         end
         task.wait(delayColeta)
     end
 end)
 
+-- Loop de Upgrade (Evolução)
 task.spawn(function()
     while true do
         if ligado then
@@ -161,11 +159,12 @@ task.spawn(function()
                 pcall(function()
                     upgradeFunction:InvokeServer("Slot" .. i)
                 end)
-                task.wait(0.05) 
+                task.wait(0.05) -- Delay pequeno entre slots para evitar kick
             end
         end
         task.wait(delayUpgrade)
     end
 end)
 
-print("✅ Script v4.0 Carregado - Correção de Teleporte Aplicada")
+print("🚀 Script v5.0 Carregado com Sucesso!")
+print("👤 Criado por: werbert_ofc")
