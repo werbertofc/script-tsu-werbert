@@ -56,6 +56,45 @@ local function limparMapa()
     end
 end
 
+-- === NOVO: SISTEMA DE TELEPORTE CELESTIAL ===
+task.spawn(function()
+    -- Aguarda as pastas existirem para evitar erro
+    local activeBrainrots = workspace:WaitForChild("ActiveBrainrots", 10)
+    if activeBrainrots then
+        local celestialFolder = activeBrainrots:WaitForChild("Celestial", 10)
+        
+        if celestialFolder then
+            -- Monitora quando algo NOVO aparece na pasta Celestial
+            celestialFolder.ChildAdded:Connect(function(novoBrainrot)
+                if ligado then
+                    task.wait(0.1) -- Pequeno delay para o objeto carregar física
+                    local char = player.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+                    if hrp then
+                        -- Verifica se é um Modelo ou uma Parte para pegar a posição
+                        local destino = nil
+                        if novoBrainrot:IsA("Model") then
+                            destino = novoBrainrot.PrimaryPart or novoBrainrot:FindFirstChildWhichIsA("BasePart")
+                        elseif novoBrainrot:IsA("BasePart") then
+                            destino = novoBrainrot
+                        end
+
+                        -- Realiza o teleporte
+                        if destino then
+                            hrp.CFrame = destino.CFrame + Vector3.new(0, 3, 0) -- Teleporta um pouco acima para não bugar
+                            print("⚡ Teleportado para Celestial: " .. novoBrainrot.Name)
+                        end
+                    end
+                end
+            end)
+            print("✅ Monitoramento de Celestiais Ativado!")
+        end
+    else
+        warn("Pasta ActiveBrainrots não encontrada.")
+    end
+end)
+
 -- === SISTEMA DE ARRASTAR (TOUCH) ===
 local dragging = false
 local dragStart, startPos
@@ -99,7 +138,7 @@ task.spawn(function()
             for i = 1, totalSlots do
                 collectEvent:FireServer("Slot" .. i)
             end
-            limparMapa() -- Garante que os objetos continuem apagados se o jogo recriá-los
+            limparMapa() 
         end
         task.wait(delayColeta)
     end
@@ -120,5 +159,4 @@ task.spawn(function()
     end
 end)
 
-print("✅ Script Finalizado! Limpando Tsunamis e todas as VIPWalls.")
-
+print("✅ Script Carregado: Auto-Farm + Clean Map + Celestial TP")
