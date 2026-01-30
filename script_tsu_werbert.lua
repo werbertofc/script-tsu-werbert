@@ -1,6 +1,6 @@
 -- ==========================================================
--- BRAINROT SUPREME HUB | BY WERBERT_OFC (v5.0)
--- FUNÇÕES: Auto-Farm, Anti-Tsunami, VIP Unlock e Celestial TP
+-- BRAINROT SUPREME HUB | BY WERBERT_OFC (v5.1)
+-- FUNÇÕES: Auto-Farm (Novo Remote), VIP Unlock e Celestial TP
 -- ==========================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -10,11 +10,15 @@ local Players = game:GetService("Players")
 -- === CONFIGURAÇÕES GERAIS ===
 local totalSlots = 30
 local delayUpgrade = 4
-local delayColeta = 5
+local delayColeta = 5 -- Pode ajustar se precisar coletar mais rápido
 local ligado = false
+local plotIdFixo = "{b201fbdf-a8b6-4aea-a1a7-e88485724a29}" -- ID fornecido
 
--- Remotes do Jogo
-local collectEvent = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("CollectMoney")
+-- === REMOTES DO JOGO ===
+-- Novo Remote de Coleta (Caminho atualizado)
+local plotActionRemote = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Net"):WaitForChild("RF/Plot.PlotAction")
+
+-- Remote Antigo de Upgrade (Mantido, verifique se ainda funciona ou se precisa atualizar também)
 local upgradeFunction = ReplicatedStorage:WaitForChild("RemoteFunctions"):WaitForChild("UpgradeBrainrot")
 
 -- === INTERFACE MOBILE (BOTÃO ON/OFF) ===
@@ -47,12 +51,10 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 45)
 UICorner.Parent = MainButton
 
--- === FUNÇÃO DE LIMPEZA DO MAPA ===
+-- === FUNÇÃO DE LIMPEZA DO MAPA (ATUALIZADA) ===
 local function limparMapa()
-    -- Deleta Tsunamis ativos
-    local tsunami = workspace:FindFirstChild("ActiveTsunamis")
-    if tsunami then tsunami:Destroy() end
-
+    -- ATENÇÃO: A limpeza de Tsunamis foi REMOVIDA conforme pedido.
+    
     -- Deleta VIPWalls (para usar a proteção VIP)
     local vipNoWorkspace = workspace:FindFirstChild("VIPWalls")
     if vipNoWorkspace then vipNoWorkspace:Destroy() end
@@ -65,7 +67,6 @@ local function limparMapa()
 end
 
 -- === LÓGICA DE TELEPORTE (CELESTIAL) ===
--- Resolve o problema de StreamingEnabled (não renderizado)
 local function teleportarParaCelestial(brainrot)
     if not ligado then return end
     
@@ -73,13 +74,10 @@ local function teleportarParaCelestial(brainrot)
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     
     if hrp and brainrot then
-        -- Força o servidor a carregar a área onde o brainrot está
         local alvoPos = brainrot:GetPivot().Position
         player:RequestStreamAroundAsync(alvoPos) 
         
-        task.wait(0.2) -- Tempo para física carregar
-        
-        -- Teleporta 5 blocos acima do alvo para evitar bugs
+        task.wait(0.2)
         hrp.CFrame = CFrame.new(alvoPos + Vector3.new(0, 5, 0))
         print("⚡ SUCESSO: Personagem movido para " .. brainrot.Name)
     end
@@ -95,17 +93,16 @@ task.spawn(function()
                 if celestialFolder then
                     local itens = celestialFolder:GetChildren()
                     if #itens > 0 then
-                        -- Se houver qualquer Celestial na pasta, teleporta para o primeiro
                         teleportarParaCelestial(itens[1])
                     end
                 end
             end
         end
-        task.wait(1.5) -- Verifica a cada 1.5 segundos
+        task.wait(1.5)
     end
 end)
 
--- === SISTEMA DE ARRASTAR O BOTÃO (MOBILE) ===
+-- === SISTEMA DE ARRASTAR O BOTÃO ===
 local dragging, dragStart, startPos
 MainButton.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -137,15 +134,28 @@ MainButton.Activated:Connect(function()
     end
 end)
 
--- === LOOPS DE FARM AUTOMÁTICO ===
--- Loop de Coleta (Dinheiro)
+-- === LOOPS DE FARM AUTOMÁTICO (ATUALIZADO) ===
+-- Loop de Coleta (Dinheiro) com NOVO REMOTE
 task.spawn(function()
     while true do
         if ligado then
             for i = 1, totalSlots do
-                collectEvent:FireServer("Slot" .. i)
+                -- Estrutura dos argumentos fornecida pelo usuário
+                local args = {
+                    "Collect Money",
+                    plotIdFixo,   -- ID do plot fornecido
+                    tostring(i)   -- Converte o número do slot (1 a 30) para string
+                }
+                
+                -- Usamos pcall para evitar que o script pare se um slot falhar
+                pcall(function()
+                    plotActionRemote:InvokeServer(unpack(args))
+                end)
+                
+                task.wait(0.05) -- Pequeno delay para não sobrecarregar
             end
-            limparMapa() -- Garante que o tsunami suma sempre
+            
+            limparMapa() -- Remove apenas paredes VIP agora
         end
         task.wait(delayColeta)
     end
@@ -159,12 +169,12 @@ task.spawn(function()
                 pcall(function()
                     upgradeFunction:InvokeServer("Slot" .. i)
                 end)
-                task.wait(0.05) -- Delay pequeno entre slots para evitar kick
+                task.wait(0.05)
             end
         end
         task.wait(delayUpgrade)
     end
 end)
 
-print("🚀 Script v5.0 Carregado com Sucesso!")
-print("👤 Criado por: werbert_ofc")
+print("🚀 Script v5.1 Atualizado Carregado!")
+print("👤 Criado por: werbert_ofc | Atualizado com novo Remote")
