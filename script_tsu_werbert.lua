@@ -1,124 +1,114 @@
--- ==========================================================
--- BRAINROT SUPREME HUB | v8.0 (BOTÃO MÓVEL + AUTO-FARM)
--- ==========================================================
+--[[
+    SCRIPT BRAINROT TYCOON AUTO-FARM (V3 - Final)
+    
+    Funcionalidades:
+    1. Auto Detect Plot ID (Detecta seu plot sozinho)
+    2. Remove VIPWalls (Procura e deleta "VIPWalls" no Workspace)
+    3. Auto Collect (Todos os 30 slots a cada 5s)
+    4. Auto Evolve (Tenta evoluir sequencialmente, 1 por segundo)
+]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local lp = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
 
--- === VARIÁVEIS DE CONTROLE ===
-local farmAtivo = false
-local totalSlots = 30
-local plotActionRemote = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Net"):WaitForChild("RF/Plot.PlotAction")
+-- CONFIGURAÇÕES
+local NomeDaAcaoColetar = "Collect Money"
+local NomeDaAcaoEvoluir = "Evolve" -- Se não funcionar, tente trocar por "Upgrade"
+local RemotePlot = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Net"):WaitForChild("RF/Plot.PlotAction")
 
--- === CRIAÇÃO DA INTERFACE (GUI) ===
-local ScreenGui = Instance.new("ScreenGui")
-local MenuButton = Instance.new("TextButton")
+print("--- Script Iniciado V3 ---")
 
-ScreenGui.Name = "BrainrotHubGui"
-ScreenGui.Parent = lp:WaitForChild("PlayerGui")
-ScreenGui.ResetOnSpawn = false
-
-MenuButton.Name = "ToggleFarm"
-MenuButton.Parent = ScreenGui
-MenuButton.Size = UDim2.new(0, 20, 0, 20) -- Tamanho 20x20
-MenuButton.Position = UDim2.new(0.5, 0, 0.5, 0)
-MenuButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Começa Vermelho
-MenuButton.Text = ""
-MenuButton.BorderSizePixel = 2
-MenuButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
-MenuButton.ZIndex = 10
-
--- === SISTEMA DE ARRASTAR (DRAGGABLE) ===
-local dragging, dragInput, dragStart, startPos
-
-local function update(input)
-    local delta = input.Position - dragStart
-    MenuButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
-
-MenuButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MenuButton.Position
+-------------------------------------------------------------------------
+-- 1. DETECTOR AUTOMÁTICO DE ID DO PLOT
+-------------------------------------------------------------------------
+local function ObterIDDoPlot()
+    -- Procura nos filhos do Workspace
+    for _, objeto in pairs(Workspace:GetChildren()) do
+        local ownerValue = objeto:FindFirstChild("Owner")
+        if ownerValue and ownerValue.Value == LocalPlayer then
+            return objeto.Name
+        end
         
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
+        -- Procura dentro de pastas comuns (Tycoons, Plots, etc)
+        if objeto:IsA("Folder") then
+            for _, plotInterno in pairs(objeto:GetChildren()) do
+                local ownerInterno = plotInterno:FindFirstChild("Owner")
+                if ownerInterno and ownerInterno.Value == LocalPlayer then
+                    return plotInterno.Name
+                end
             end
-        end)
-    end
-end)
-
-MenuButton.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        update(input)
-    end
-end)
-
--- === LÓGICA DO AUTO-FARM ===
-
-local function getPlotID()
-    for _, plot in pairs(Workspace:WaitForChild("Plots"):GetChildren()) do
-        if plot:FindFirstChild("Owner") and plot.Owner.Value == lp.Name then
-            return plot.Name
         end
     end
     return nil
 end
 
-local function removerParedesVIP()
-    pcall(function()
-        if Workspace:FindFirstChild("VIPWalls") then Workspace.VIPWalls:Destroy() end
-        if Workspace:FindFirstChild("Floors") and Workspace.Floors:FindFirstChild("VIPWalls") then
-            Workspace.Floors.VIPWalls:Destroy()
+local MEU_PLOT_ID = nil
+repeat
+    MEU_PLOT_ID = ObterIDDoPlot()
+    if not MEU_PLOT_ID then
+        task.wait(1)
+    end
+until MEU_PLOT_ID ~= nil
+
+print("ID DO PLOT DETECTADO: " .. MEU_PLOT_ID)
+
+-------------------------------------------------------------------------
+-- 2. REMOVER ESPECIFICAMENTE "VIPWalls"
+-------------------------------------------------------------------------
+task.spawn(function()
+    print("Procurando objetos 'VIPWalls'...")
+    task.wait(1) -- Pequeno delay para garantir carregamento
+    local contagem = 0
+    
+    -- Varre o Workspace inteiro procurando pelo nome exato
+    for _, objeto in pairs(Workspace:GetDescendants()) do
+        if objeto.Name == "VIPWalls" then
+            objeto:Destroy()
+            contagem = contagem + 1
         end
+    end
+    print("Total de 'VIPWalls' removidas: " .. contagem)
+end)
+
+-------------------------------------------------------------------------
+-- 3. FUNÇÃO DE INTERAÇÃO (Base)
+-------------------------------------------------------------------------
+local function interagirComSlot(acao, slotNumero)
+    local args = {
+        acao,
+        MEU_PLOT_ID,
+        tostring(slotNumero)
+    }
+    pcall(function()
+        RemotePlot:InvokeServer(unpack(args))
     end)
 end
 
--- Loop de Coleta e Evolução (Só roda se farmAtivo for true)
+-------------------------------------------------------------------------
+-- 4. AUTO COLLECT (Todos os slots a cada 5s)
+-------------------------------------------------------------------------
 task.spawn(function()
     while true do
-        if farmAtivo then
-            local plotID = getPlotID()
-            if plotID then
-                removerParedesVIP()
-                for i = 1, totalSlots do
-                    if not farmAtivo then break end
-                    pcall(function()
-                        -- Coleta
-                        plotActionRemote:InvokeServer("Collect Money", plotID, tostring(i))
-                        -- Evolução (Simultânea para eficiência)
-                        plotActionRemote:InvokeServer("Upgrade Slot", plotID, tostring(i))
-                    end)
-                    task.wait(0.1) -- Proteção anti-kick
-                end
-            end
+        for i = 1, 30 do
+            task.spawn(function()
+                interagirComSlot(NomeDaAcaoColetar, i)
+            end)
         end
-        task.wait(1)
+        task.wait(5)
     end
 end)
 
--- === EVENTO DE CLIQUE DO BOTÃO ===
-MenuButton.MouseButton1Click:Connect(function()
-    farmAtivo = not farmAtivo
-    
-    if farmAtivo then
-        MenuButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0) -- Verde
-        print("✅ Farm Ativado")
-    else
-        MenuButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Vermelho
-        print("❌ Farm Desativado")
+-------------------------------------------------------------------------
+-- 5. AUTO EVOLVE (Um por um, a cada 1s)
+-------------------------------------------------------------------------
+task.spawn(function()
+    while true do
+        for i = 1, 30 do
+            interagirComSlot(NomeDaAcaoEvoluir, i)
+            task.wait(1) -- Tenta o próximo slot após 1 segundo
+        end
+        -- Ao chegar no 30, o loop 'while' reinicia voltando para o 1
     end
 end)
-
-print("🚀 Script Carregado! Botão 20x20 na tela. Clique para ativar.")
