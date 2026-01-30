@@ -1,93 +1,124 @@
 -- ==========================================================
--- BRAINROT SUPREME HUB | v6.0 (FULL AUTO)
--- FUNÇÕES: Auto-Farm (Coleta + Evolução Inteligente) + Anti-VIP
+-- BRAINROT SUPREME HUB | v8.0 (BOTÃO MÓVEL + AUTO-FARM)
 -- ==========================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local lp = Players.LocalPlayer
 
--- === CONFIGURAÇÕES ===
-local plotID = "{203b3c84-5814-4070-8d7a-db4252ce38d6}" -- ID fornecido por você
+-- === VARIÁVEIS DE CONTROLE ===
+local farmAtivo = false
 local totalSlots = 30
-local delayColetaGlobal = 5 -- Tempo para recomeçar a coleta de todos
-local delayEvolucao = 1     -- Tempo entre tentar evoluir um slot e outro
-
--- === REMOTES ===
--- Remote Novo de Coleta
 local plotActionRemote = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Net"):WaitForChild("RF/Plot.PlotAction")
 
--- Remote de Upgrade (Mantido o padrão funcional, já que não foi fornecido um novo para upgrade)
-local upgradeFunction = ReplicatedStorage:WaitForChild("RemoteFunctions"):WaitForChild("UpgradeBrainrot")
+-- === CRIAÇÃO DA INTERFACE (GUI) ===
+local ScreenGui = Instance.new("ScreenGui")
+local MenuButton = Instance.new("TextButton")
 
--- === FUNÇÃO ANTI-VIP (REMOVE PAREDES) ===
+ScreenGui.Name = "BrainrotHubGui"
+ScreenGui.Parent = lp:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+
+MenuButton.Name = "ToggleFarm"
+MenuButton.Parent = ScreenGui
+MenuButton.Size = UDim2.new(0, 20, 0, 20) -- Tamanho 20x20
+MenuButton.Position = UDim2.new(0.5, 0, 0.5, 0)
+MenuButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Começa Vermelho
+MenuButton.Text = ""
+MenuButton.BorderSizePixel = 2
+MenuButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
+MenuButton.ZIndex = 10
+
+-- === SISTEMA DE ARRASTAR (DRAGGABLE) ===
+local dragging, dragInput, dragStart, startPos
+
+local function update(input)
+    local delta = input.Position - dragStart
+    MenuButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+MenuButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MenuButton.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+MenuButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
+    end
+end)
+
+-- === LÓGICA DO AUTO-FARM ===
+
+local function getPlotID()
+    for _, plot in pairs(Workspace:WaitForChild("Plots"):GetChildren()) do
+        if plot:FindFirstChild("Owner") and plot.Owner.Value == lp.Name then
+            return plot.Name
+        end
+    end
+    return nil
+end
+
 local function removerParedesVIP()
     pcall(function()
-        -- Tenta remover do Workspace direto
-        if Workspace:FindFirstChild("VIPWalls") then
-            Workspace.VIPWalls:Destroy()
-        end
-        
-        -- Tenta remover de dentro da pasta Floors (comum em tycoons)
+        if Workspace:FindFirstChild("VIPWalls") then Workspace.VIPWalls:Destroy() end
         if Workspace:FindFirstChild("Floors") and Workspace.Floors:FindFirstChild("VIPWalls") then
             Workspace.Floors.VIPWalls:Destroy()
         end
     end)
 end
 
--- Executa a remoção VIP imediatamente ao iniciar
-removerParedesVIP()
-
--- === LOOP 1: AUTO EVOLUÇÃO (1 por 1 a cada 1 segundo) ===
+-- Loop de Coleta e Evolução (Só roda se farmAtivo for true)
 task.spawn(function()
-    print("🧬 Auto-Evolução Iniciada...")
     while true do
-        for i = 1, totalSlots do
-            pcall(function()
-                -- Tenta evoluir o slot atual
-                upgradeFunction:InvokeServer("Slot" .. i)
-                -- print("🔧 Tentando evoluir Slot " .. i) -- (Opcional: Descomente para ver no F9)
-            end)
-            
-            -- Espera 1 segundo antes de tentar o próximo slot, conforme pedido
-            task.wait(delayEvolucao)
+        if farmAtivo then
+            local plotID = getPlotID()
+            if plotID then
+                removerParedesVIP()
+                for i = 1, totalSlots do
+                    if not farmAtivo then break end
+                    pcall(function()
+                        -- Coleta
+                        plotActionRemote:InvokeServer("Collect Money", plotID, tostring(i))
+                        -- Evolução (Simultânea para eficiência)
+                        plotActionRemote:InvokeServer("Upgrade Slot", plotID, tostring(i))
+                    end)
+                    task.wait(0.1) -- Proteção anti-kick
+                end
+            end
         end
-        -- Pequena pausa antes de reiniciar o ciclo do 1 ao 30
-        task.wait(0.5)
+        task.wait(1)
     end
 end)
 
--- === LOOP 2: AUTO COLETA (Todos os slots a cada 5 segundos) ===
-task.spawn(function()
-    print("💰 Auto-Coleta Iniciada...")
-    while true do
-        -- Itera por todos os 30 slots para coletar
-        for i = 1, totalSlots do
-            pcall(function()
-                local args = {
-                    "Collect Money",
-                    plotID,       -- O ID do seu Plot
-                    tostring(i)   -- Converte número para texto ("1", "2", etc.)
-                }
-                plotActionRemote:InvokeServer(unpack(args))
-            end)
-            -- Um delay minúsculo entre coletas só para o jogo não travar (não afeta os 5s globais)
-            task.wait(0.05) 
-        end
-        
-        -- Garante que as paredes VIP sumam sempre
-        removerParedesVIP()
-        
-        -- Espera 5 segundos para fazer a varredura de coleta novamente
-        task.wait(delayColetaGlobal)
+-- === EVENTO DE CLIQUE DO BOTÃO ===
+MenuButton.MouseButton1Click:Connect(function()
+    farmAtivo = not farmAtivo
+    
+    if farmAtivo then
+        MenuButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0) -- Verde
+        print("✅ Farm Ativado")
+    else
+        MenuButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Vermelho
+        print("❌ Farm Desativado")
     end
 end)
 
--- === NOTIFICAÇÃO ===
-game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "Brainrot Hub v6.0";
-    Text = "Farm Ativado! Coletando e Evoluindo.";
-    Duration = 5;
-})
-
-print("🚀 SCRIPT RODANDO: Coleta a cada 5s | Evolução a cada 1s")
+print("🚀 Script Carregado! Botão 20x20 na tela. Clique para ativar.")
